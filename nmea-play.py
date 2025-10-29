@@ -7,13 +7,13 @@ import time
 # nc localhost 10110
 
 # an async generator for the next line from an nmea file
-async def next_nmea(filename):
+async def next_nmea(filename, noGps):
     reality_offset = None
     with open(filename) as f:
         next_delivery = time.monotonic()
         for line in f:
             # check validity
-            if len(line)<6 or line[0] != "$":
+            if len(line)<6:
                 continue
             # timestamp?
             if line[3:6] == 'ZDA':
@@ -26,7 +26,8 @@ async def next_nmea(filename):
             await asyncio.sleep(next_delivery - time.monotonic())
             next_delivery += len(line)/600. # 4800 bit/sec
             # serve
-            yield line
+            if not (noGps and (line[3:6] == 'GLL' or line[3:6] == 'VTG')):
+                yield line
 
 class ServeIterable:
     def __init__(self, port):
@@ -54,6 +55,7 @@ parser = argparse.ArgumentParser(
 )
 parser.add_argument('filename', help="An NMEA log file containing 'ZDA' timestamps")
 parser.add_argument('port', help="TCP port number to serve from (default 10110)", nargs='?', default=10110)
+parser.add_argument('--nogps', action='store_true', help='Disable GPS output')
 args = parser.parse_args()
 
-asyncio.run(ServeIterable(args.port).playback_loop(next_nmea(args.filename)))
+asyncio.run(ServeIterable(args.port).playback_loop(next_nmea(args.filename, args.nogps)))
